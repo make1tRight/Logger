@@ -8,7 +8,13 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include "fmt/format.h"
 
+enum class LogLevel {
+    INFO,
+    DEBUG,
+    ERROR
+};
 
 template <typename T>
 std::string to_string_helper(T&& arg) {
@@ -80,6 +86,27 @@ public:
         _log_queue.push(formatMessage(format, std::forward<Args>(args)...));
     }
 
+    template<typename... Args>
+    void log(LogLevel level, const std::string& format, Args&&... args) {
+        std::string level_str = "";
+        switch (level)
+        {
+        case LogLevel::INFO:
+            level_str = "[INFO]: ";
+            break;
+        case LogLevel::DEBUG:
+            level_str = "[DEBUG]: ";
+            break;
+        case LogLevel::ERROR:
+            level_str = "[ERROR]: ";
+            break;
+        default:
+            break;
+        }
+        _log_queue.push(level_str +
+             formatMessage(format, std::forward<Args>(args)...));
+    }
+
 private:
     void processQueue() {
         std::string msg;
@@ -88,33 +115,51 @@ private:
         }
     }
 
+    std::string getCurrentTime() {
+        auto now = std::chrono::high_resolution_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        char buffer[100];
+        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&now_time));
+        return std::string(buffer);
+    }
+
     template<typename... Args>
     std::string formatMessage(const std::string& format, Args&&... args) {
-        std::vector<std::string> arg_strings = {
-            to_string_helper(std::forward<Args>(args))...
-        };
-        std::stringstream oss;
-        std::size_t pos = 0;
-        std::size_t arg_index = 0;
-        std::size_t placeholder = format.find("{}", pos);
-
-        while (placeholder != std::string::npos) {
-            oss << format.substr(pos, placeholder - pos);
-            if (arg_index < arg_strings.size()) {
-                oss << arg_strings[arg_index++];
-            } else {
-                oss << "{}";
+        try {
+            return fmt::format(format, std::forward<Args>(args)...);
+        }
+        catch (const fmt::format_error& e) {
+            std::vector<std::string> arg_strings = {
+                to_string_helper(std::forward<Args>(args))...
+            };
+            std::stringstream oss;
+            std::size_t pos = 0;
+            std::size_t arg_index = 0;
+            std::size_t placeholder = format.find("{}", pos);
+    
+            while (placeholder != std::string::npos) {
+                oss << format.substr(pos, placeholder - pos);
+                if (arg_index < arg_strings.size()) {
+                    oss << arg_strings[arg_index++];
+                } else {
+                    oss << "{}";
+                }
+                pos = placeholder + 2;
+                placeholder = format.find("{}", pos);
             }
-            pos = placeholder + 2;
-            placeholder = format.find("{}", pos);
+            oss << format.substr(pos);
+    
+            while (arg_index < arg_strings.size()) {
+                oss << arg_strings[arg_index++];
+            }
+    
+            return oss.str();
         }
-        oss << format.substr(pos);
+    }
 
-        while (arg_index < arg_strings.size()) {
-            oss << arg_strings[arg_index++];
-        }
-
-        return oss.str();
+    template<typename... Args>
+    std::string formatMessage(const std::string& format, Args&&... args) {
+        return "[" + getCurrentTime() + "]" + (formatMessge_logic);
     }
 
 private:
