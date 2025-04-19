@@ -1,3 +1,6 @@
+#ifndef LOGGER_H
+#define LOGGER_H
+
 #include <string>
 #include <sstream>
 #include <mutex>
@@ -273,3 +276,5 @@ private:
     LogQueue _log_queue;
     std::vector<std::shared_ptr<LogSink>> _sinks;
 };
+
+#endif // LOGGER_H

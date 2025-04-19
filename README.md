@@ -15,6 +15,15 @@
 ## 日志带时间戳
 1. `getCurrentTime`实现
 
+## 多目标输出
+1. 通过抽象基类与派生类实现, 派生类继承基类, 并重写write方法
+    1. 实现console输出
+    2. 实现file输出
+## 日志轮转
+1. 按文件大小轮转
+    - (`5*1024*1024`达到最大值写入到新文件中)
+2. 按日期轮转
+
 ```bash
 g++ -std=c++11 LogTest.cpp Logger.h ./fmt/src/format.cc -I ./fmt/include -o logger
 ```
