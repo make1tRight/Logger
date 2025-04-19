@@ -2,7 +2,10 @@
 
 int main() {
     try {
-        Logger logger("log.txt");
+        Logger logger;
+
+        logger.addsink(std::make_shared<FileSink>());
+        logger.addsink(std::make_shared<ConsoleSink>());
 
         logger.log("Start application.");
 
@@ -14,9 +17,12 @@ int main() {
         logger.log("User {} performed {} in {} seconds.",
              user_id, action, world);
         logger.log("Hello {}", world);
-        logger.log("This is a message without placeholder.");
+        // logger.log("This is a message without placeholder.");
         logger.log("Multiple placeholders {}, {}, {}.", 1, 2, 3);
 
+        for (int i = 5000000; i >= 0; --i) {
+            logger.log("This is a message without placeholder.");
+        }
     }
     catch (std::exception& e) {
         std::cout << "Exception: " << e.what() << std::endl;

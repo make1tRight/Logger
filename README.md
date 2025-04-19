@@ -14,3 +14,7 @@
 
 ## 日志带时间戳
 1. `getCurrentTime`实现
+
+```bash
+g++ -std=c++11 LogTest.cpp Logger.h ./fmt/src/format.cc -I ./fmt/include -o logger
+```

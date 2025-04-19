@@ -9,12 +9,102 @@
 #include <thread>
 #include <vector>
 #include "fmt/format.h"
+#include <memory>
+
+const int MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 enum class LogLevel {
     INFO,
     DEBUG,
     ERROR
 };
+
+class LogSink {
+public:
+    virtual ~LogSink() = default;
+    virtual void write(const std::string& msg) = 0;
+};
+
+class ConsoleSink : public LogSink {
+public:
+    virtual ~ConsoleSink() = default;
+
+    virtual void write(const std::string& msg) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        std::cout << msg << std::endl;
+    }
+private:
+    std::mutex _mutex;
+};
+
+class FileSink : public LogSink {
+public:
+    FileSink(std::size_t max_file_size = MAX_FILE_SIZE)
+         : _max_file_size(max_file_size),
+          _file_index(0), _current_date(getCurrentDate()) {
+        // if (!_log_file.is_open()) {
+        //     std::cerr << "log file cannot open" << std::endl;
+        // }
+        
+        openNewFile();
+    }
+
+    virtual ~FileSink() final {
+        if (_log_file.is_open()) {
+            _log_file.close();
+        }
+    }
+
+    virtual void write(const std::string& msg) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        std::string today = getCurrentDate();
+
+        if (today != _current_date) {
+            _current_date = today;
+            _file_index = 0;
+
+            rotateFile();
+        }
+        if (_log_file.tellp() > static_cast<std::streampos>(_max_file_size)) {
+            rotateFile();
+        }
+        _log_file << msg << std::endl;
+    }
+private:
+    void openNewFile() {
+        std::string filename = fmt::format("{}_{}.log", 
+            _current_date, _file_index);
+        ++_file_index;
+        _log_file.open(filename, std::ios::out|std::ios::app);
+        
+        if (!_log_file.is_open()) {
+            std::cerr << "log file cannot open" << std::endl;
+        }
+    }
+
+    std::string getCurrentDate() {
+        auto now = std::chrono::high_resolution_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        char buffer[11];
+        std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", std::localtime(&now_time));
+        return std::string(buffer);
+    }
+
+    void rotateFile() {
+        if (_log_file.is_open()) {
+            _log_file.close();
+        }
+        openNewFile();
+    }
+private:
+    std::fstream _log_file;
+    std::mutex _mutex;
+    std::string _current_date;
+    std::size_t _file_index;
+    // std::string _basename;
+    std::size_t _max_file_size;
+};
+
 
 template <typename T>
 std::string to_string_helper(T&& arg) {
@@ -58,15 +148,18 @@ private:
     bool _is_shutdown;
 };
 
-
 class Logger {
 public:
-    Logger(const std::string& filename)
-         : _log_file(filename, std::ios::out|std::ios::app), _exit_flag(false)  {
-        if (!_log_file.is_open()) {
-            std::cout << "cannot open log file." << std::endl;
-        }
-        // 后台线程持续从队列中取出消息并写入文件
+    // Logger(const std::string& filename)
+    //      : _log_file(filename, std::ios::out|std::ios::app), _exit_flag(false)  {
+    //     if (!_log_file.is_open()) {
+    //         std::cout << "cannot open log file." << std::endl;
+    //     }
+    //     // 后台线程持续从队列中取出消息并写入文件
+    //     _thread = std::thread(&Logger::processQueue, this);
+    // }
+
+    Logger() : _exit_flag(false)  {
         _thread = std::thread(&Logger::processQueue, this);
     }
 
@@ -74,10 +167,6 @@ public:
         _log_queue.shutdown();
         if (_thread.joinable()) {
             _thread.join();
-        }
-
-        if (_log_file.is_open()) {
-            _log_file.close();
         }
     }
 
@@ -107,11 +196,24 @@ public:
              formatMessage(format, std::forward<Args>(args)...));
     }
 
+    void addsink(std::shared_ptr<LogSink> log_sink) {
+        _sinks.push_back(log_sink);
+    }
+
 private:
+    // void processQueue() {
+    //     std::string msg;
+    //     while (_log_queue.pop(msg)) {
+    //         _log_file << msg << std::endl;
+    //     }
+    // }
+
     void processQueue() {
         std::string msg;
         while (_log_queue.pop(msg)) {
-            _log_file << msg << std::endl;
+            for (const auto& sink : _sinks) {
+                sink->write(msg);
+            }
         }
     }
 
@@ -158,8 +260,10 @@ private:
     }
 
     template<typename... Args>
-    std::string formatMessage(const std::string& format, Args&&... args) {
-        return "[" + getCurrentTime() + "]" + (formatMessge_logic);
+    std::string formatMessageAddTime(const std::string& format,
+         Args&&... args) {
+        return "[" + getCurrentTime() + "]" 
+            + fmt::format(format, std::forward<Args>(args)...);;
     }
 
 private:
@@ -167,4 +271,5 @@ private:
     std::atomic<bool> _exit_flag;
     std::thread _thread;
     LogQueue _log_queue;
+    std::vector<std::shared_ptr<LogSink>> _sinks;
 };
